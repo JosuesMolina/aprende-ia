@@ -10,13 +10,41 @@ const modules = [
 ];
 
 const defaultState = { xp: 0, completed: [], awards: {}, exerciseText: '', lastScreen: 'home' };
-let state = { ...defaultState, ...JSON.parse(localStorage.getItem('aprendeIA.progress') || '{}') };
+function loadState() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('aprendeIA.progress') || '{}');
+    return { ...defaultState, ...stored, completed: Array.isArray(stored.completed) ? stored.completed : [], awards: stored.awards && typeof stored.awards === 'object' ? stored.awards : {} };
+  } catch {
+    return { ...defaultState };
+  }
+}
+let state = loadState();
+if (state.awards.quiz && state.awards.mission && !state.completed.includes('ia-basica')) state.completed.push('ia-basica');
 const app = document.querySelector('#app');
 const save = () => localStorage.setItem('aprendeIA.progress', JSON.stringify(state));
+if (state.awards.quiz && state.awards.mission && state.completed.includes('ia-basica')) save();
 const completedCount = () => state.completed.length;
 const escapeHTML = (text) => text.replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;' }[c]));
+const appBadge = (name) => `<span class="pill" role="img" aria-label="${name}" style="padding:4px 8px;margin-bottom:6px">${name}</span>`;
+function renderAppStrip() {
+  const grids = app.querySelectorAll('.concept-grid');
+  const target = grids[2];
+  if (!target) return;
+  const strip = document.createElement('div');
+  strip.className = 'app-strip';
+  strip.style.cssText = 'display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--color-surface)';
+  strip.setAttribute('aria-label', 'Aplicaciones y ecosistemas mencionados');
+  const groups = [
+    ['assets/icons/app-ai.svg', 'Herramientas de IA: ChatGPT, Claude y Gemini'],
+    ['assets/icons/app-google.svg', 'Google Workspace: Gmail, Drive, Docs, Sheets, Slides, Calendar y Meet'],
+    ['assets/icons/app-work.svg', 'Conectores de trabajo: Slack, Notion, Asana y Canva']
+  ];
+  strip.innerHTML = groups.map(([src, alt]) => `<img src="${src}" alt="${alt}" width="24" height="24" loading="lazy">`).join('') + '<span class="muted">ChatGPT · Claude · Gemini · Gmail · Drive · Docs · Sheets · Slides · Calendar · Meet · Slack · Notion · Asana · Canva · Android · iOS</span>';
+  target.parentNode.insertBefore(strip, target.nextSibling);
+}
 
-function addXP(key, amount) { if (!state.awards[key]) { state.awards[key] = true; state.xp += amount; save(); } updateHeader(); }
+function completeModule(id) { if (!state.completed.includes(id)) { state.completed.push(id); save(); } }
+function addXP(key, amount) { if (!state.awards[key]) { state.awards[key] = true; state.xp += amount; if (state.awards.quiz && state.awards.mission) completeModule('ia-basica'); save(); } updateHeader(); }
 function updateHeader() { document.querySelector('#header-xp').textContent = `${state.xp} XP`; }
 function progress() { return Math.round((completedCount() / modules.length) * 100); }
 function showHome() {
@@ -31,6 +59,10 @@ function showLesson() {
   state.lastScreen = 'lesson'; save();
   const quizDone = !!state.awards.quiz; const missionDone = !!state.awards.mission; const complete = quizDone && missionDone;
   app.innerHTML = `<div class="lesson-wrap"><nav class="lesson-nav"><button class="button secondary" id="back">← Ruta del curso</button><span class="lesson-progress">MÓDULO 01 / 07</span></nav><section class="lesson-hero card"><p class="eyebrow">🧠 MÓDULO 01</p><h1>¿Qué es la IA?</h1><p>La IA es una herramienta que reconoce patrones y genera resultados a partir de instrucciones. No es magia: su calidad depende de cómo la uses y de cómo verifiques sus respuestas.</p><div class="progress-track"><div class="progress-bar" style="width:${complete ? 100 : quizDone || missionDone ? 55 : 12}%"></div></div><span class="muted">${complete ? 'Módulo completado' : 'Completa las dos actividades para terminar el módulo'}</span></section><section class="content-card card"><p class="eyebrow">20% TEORÍA</p><h2>Piensa en la IA como un copiloto</h2><div class="concept-grid"><div class="concept">🎯<b>Recibe instrucciones</b><span class="muted">Necesita contexto para ayudarte bien.</span></div><div class="concept">⚙️<b>Propone resultados</b><span class="muted">Puede redactar, resumir o generar ideas.</span></div><div class="concept">🔎<b>No siempre acierta</b><span class="muted">Tu criterio y verificación importan.</span></div></div></section><section class="content-card card" id="quiz-card"><p class="eyebrow">80% PRÁCTICA · +100 XP</p><h2>Mini quiz: ¿cómo aprovecharías la IA?</h2><p>Elige la mejor forma de pedir ayuda para preparar una reunión.</p><div id="quiz-options"><button class="quiz-option" data-answer="0">“Haz algo sobre la reunión.”</button><button class="quiz-option" data-answer="1">“No importa, decide tú todo.”</button><button class="quiz-option" data-answer="2">“Ayúdame a crear una agenda de 30 minutos para una reunión con mi equipo de ventas; incluye objetivos y próximos pasos.”</button></div><div id="quiz-feedback"></div></section><section class="content-card card"><div class="mission-header"><span class="mission-icon">🎯</span><div><p class="eyebrow">MISIÓN · +120 XP</p><h2>Mejora este prompt</h2></div></div><p>Prompt inicial:</p><div class="prompt-box">“Hazme un correo para mi jefe.”</div><p>Una petición útil da a la IA la información necesaria. Incluye cuantos criterios puedas:</p><div class="criteria" id="criteria">${['Contexto','Objetivo','Audiencia','Tono','Restricciones','Formato esperado'].map(x=>`<span class="criterion" data-c="${x}">${x}</span>`).join('')}</div><label class="muted" for="prompt-input">Escribe una versión mejorada (ejemplo: contexto, propósito, tono y formato).</label><textarea class="exercise-input" id="prompt-input" placeholder="Ejemplo: Soy analista de marketing. Redacta un correo breve para mi jefe, Ana, solicitando...">${escapeHTML(state.exerciseText)}</textarea><div class="btn-row" style="margin-top:14px"><button class="button" id="evaluate">Evaluar mi prompt</button><button class="button secondary" id="copy">📋 COPIAR PROMPT</button><a class="button secondary" target="_blank" rel="noopener" href="https://chatgpt.com/">🤖 ABRIR CHATGPT</a></div><div id="mission-feedback"></div></section>${complete ? '<section class="achievement">🏅 <strong>Insignia desbloqueada: Primera misión IA.</strong> Ya sabes que una buena instrucción incluye información útil y que tú validas el resultado.</section>' : ''}</div>`;
+  document.querySelector('#quiz-feedback').setAttribute('role', 'status');
+  document.querySelector('#quiz-feedback').setAttribute('aria-live', 'polite');
+  document.querySelector('#mission-feedback').setAttribute('role', 'status');
+  document.querySelector('#mission-feedback').setAttribute('aria-live', 'polite');
   document.querySelector('#back').onclick = showHome;
   document.querySelectorAll('.quiz-option').forEach(b => b.onclick = () => answerQuiz(Number(b.dataset.answer)));
   document.querySelector('#prompt-input').oninput = e => { state.exerciseText=e.target.value; save(); highlightCriteria(e.target.value); };
@@ -40,6 +72,7 @@ function showLesson() {
   if (quizDone) document.querySelector('#quiz-feedback').innerHTML = '<div class="feedback">✓ Quiz completado. Ganaste 100 XP.</div>';
 }
 function showOfficeModule() {
+  setTimeout(renderAppStrip, 0);
   state.lastScreen = 'office'; save();
   app.innerHTML = `<div class="lesson-wrap"><nav class="lesson-nav"><button class="button secondary" id="back">← Ruta del curso</button><span class="lesson-progress">MÓDULO 05 / 07</span></nav><section class="lesson-hero card"><p class="eyebrow">🛠️ MÓDULO 05 · IA EN EL TRABAJO</p><h1>IA para resolver problemas reales</h1><p>El valor no está en usar “la mejor IA”, sino en conectar la herramienta correcta a una tarea, tus fuentes de trabajo y tu criterio profesional.</p></section><section class="content-card card"><p class="eyebrow">OFICINA · DÍA A DÍA</p><h2>Gana tiempo en tareas que se repiten</h2><div class="concept-grid"><div class="concept">✉️<b>Comunica</b><span class="muted">Borradores de correos, comunicados, propuestas e imágenes explicativas.</span></div><div class="concept">📊<b>Entiende datos</b><span class="muted">Resume tendencias, crea gráficas y señala anomalías para investigar.</span></div><div class="concept">🗓️<b>Organiza</b><span class="muted">Prepara agenda, prioriza pendientes y convierte reuniones en próximos pasos.</span></div></div></section><section class="content-card card"><p class="eyebrow">DECISIONES EJECUTIVAS</p><h2>Una copiloto para preparar, no para decidir por ti</h2><div class="concept-grid"><div class="concept">🔭<b>Escenarios</b><span class="muted">Pide escenarios, supuestos, riesgos e indicadores a vigilar; no predicciones infalibles.</span></div><div class="concept">🧾<b>Resumen ejecutivo</b><span class="muted">Convierte reportes y notas extensas en decisiones pendientes y preguntas clave.</span></div><div class="concept">🎤<b>Presenta</b><span class="muted">Transforma datos y documentos en el guion de una presentación adaptada a cada audiencia.</span></div></div></section><section class="content-card card"><p class="eyebrow">ELIGE POR ECOSISTEMA</p><h2>La integración también cambia la respuesta</h2><div class="concept-grid"><div class="concept">💬<b>ChatGPT</b><span class="muted">Buena opción para equipos con herramientas mixtas: archivos, análisis y apps como Drive o Slack, según cuenta y permisos.</span></div><div class="concept">✍️<b>Claude</b><span class="muted">Útil para trabajo documental y contexto de proyecto; sus conectores pueden enlazar Drive, Gmail, Notion, Asana o Canva.</span></div><div class="concept">🔷<b>Gemini</b><span class="muted">Opción natural si el trabajo vive en Gmail, Drive, Docs, Sheets, Calendar, Tasks y Meet. Algunas integraciones móviles dependen de Android.</span></div></div><p class="feedback">🔐 Un conector no otorga acceso ilimitado: la IA solo usa lo que la cuenta autorizada puede ver. Revisa permisos y la política de datos de tu organización.</p></section><section class="content-card card"><div class="mission-header"><span class="mission-icon">🧩</span><div><p class="eyebrow">MISIÓN PRÁCTICA</p><h2>Arma tu ecosistema IA</h2></div></div><p>Elige una tarea real y redacta un plan breve: herramienta, fuentes que necesitarías conectar y la validación humana antes de actuar.</p><div class="prompt-box">Ejemplo: “Después de la reunión semanal, usaré [herramienta] para convertir las notas en una tabla con acuerdos, responsable, fecha límite, riesgo y siguiente paso. Revisaré responsables y fechas antes de compartirla.”</div><div class="btn-row" style="margin-top:14px"><button class="button secondary" id="copy-office">📋 COPIAR PROMPT</button><a class="button secondary" target="_blank" rel="noopener" href="https://chatgpt.com/">🤖 ABRIR CHATGPT</a></div></section></div>`;
   document.querySelector('#back').onclick = showHome;
